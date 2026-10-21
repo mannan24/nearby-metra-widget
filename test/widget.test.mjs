@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import gtfs from 'gtfs-realtime-bindings';
+import vm from 'node:vm';
 const bundle=await build({entryPoints:['src/widget.js'],bundle:true,write:false,format:'iife',globalName:'Widget',platform:'browser',target:'es2020'});
-const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
 async function run({gps=true,keys=false,liveFailure=false}={}) {
   const now=Date.now(),texts=[],requests=[];let widget,complete=false;
   const station={id:'59TH-UP',name:'59th St. (U. of Chicago)',lat:41.788,lon:-87.589};
@@ -13,7 +13,7 @@ async function run({gps=true,keys=false,liveFailure=false}={}) {
   class Stack{addText(s){texts.push(s);return {}}addStack(){return new Stack()}addSpacer(){}layoutVertically(){}centerAlignContent(){}addImage(){return {}}setPadding(){}async presentMedium(){}}
   class Color {constructor(){}static dynamic(){return {}}}
   const env={Request,FileManager:{local:()=>({cacheDirectory:()=>'/tmp',joinPath:(a,b)=>a+'/'+b,readString:()=>{throw Error('none')},writeString:()=>{}})},Keychain:{contains:()=>keys,get:()=> 'TEST-ONLY'},Location:{setAccuracyToHundredMeters:()=>{},current:async()=>{if(!gps)throw Error('denied');return {latitude:41.789,longitude:-87.59,horizontalAccuracy:10,timestamp:now/1000}}},config:{runsInApp:false,widgetFamily:'medium'},ListWidget:Stack,Color,Font:{systemFont:()=>{},boldSystemFont:()=>{}},SFSymbol:{named:()=>({image:{}})},Size:class{},URLScheme:{forRunningScript:()=> 'scriptable:///run'},Script:{setWidget:w=>widget=w,complete:()=>complete=true}};
-  await new AsyncFunction(...Object.keys(env),bundle.outputFiles[0].text+'\nawait Widget.default();')(...Object.values(env));
+  await vm.runInNewContext('(async()=>{'+bundle.outputFiles[0].text+'\nawait Widget.default();})()',env);
   assert.ok(complete&&widget);return {texts,requests};
 }
 test('widget shows both directions with no keys and no false live/walk values',async()=>{const {texts}=await run();assert.ok(texts.includes('TO MILLENNIUM'));assert.ok(texts.includes('FROM MILLENNIUM'));assert.ok(texts.includes('Walking key needed'));assert.ok(texts.includes('Scheduled'));assert.ok(!texts.includes('Live prediction'));});
