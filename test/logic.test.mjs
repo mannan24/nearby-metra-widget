@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {nearest,predictions,usableFeed,leaveBy} from '../src/logic.mjs';
+import {serviceOrigin,csv,activeServices} from '../src/time.mjs';
+const now=Date.parse('2026-10-22T13:00:00Z');
+const train={id:'ME1',date:'20261022',sequence:4,direction:'to',depart:now/1000+600,arrive:now/1000+540};
+const feed=update=>({header:{timestamp:now/1000},entity:[{tripUpdate:{trip:{tripId:'ME1',startDate:'20261022'},...update}}]});
+test('nearest station uses current position',()=>{assert.equal(nearest([{id:'59',lat:41.788,lon:-87.589},{id:'mill',lat:41.884,lon:-87.624}],{lat:41.789,lon:-87.59}).id,'59');});
+test('unavailable live feed is explicitly scheduled',()=>{assert.equal(predictions([train],null,'59',now)[0].mode,'scheduled');});
+test('stop departure prediction and leave-by buffer',()=>{const r=predictions([train],feed({stopTimeUpdate:[{stopId:'59',departure:{time:now/1000+900}}]}),'59',now)[0];assert.equal(r.mode,'live');assert.equal(r.when,now+900000);assert.equal(leaveBy(r,300),now+420000);});
+test('incoming train uses arrival, not departure',()=>{const f=feed({stopTimeUpdate:[{stopId:'59',arrival:{time:now/1000+420},departure:{time:now/1000+480}}]});assert.equal(predictions([{...train,direction:'from'}],f,'59',now)[0].when,now+420000);});
+test('cancellations and skipped stations are excluded',()=>{assert.equal(predictions([train],feed({trip:{tripId:'ME1',startDate:'20261022',scheduleRelationship:3}}),'59',now).length,0);assert.equal(predictions([train],feed({stopTimeUpdate:[{stopId:'59',scheduleRelationship:1}]}),'59',now).length,0);});
+test('old feeds and old individual predictions are not live',()=>{const f=feed({});f.header.timestamp-=600;assert.equal(usableFeed(f,now),false);const u=feed({timestamp:now/1000-600,stopTimeUpdate:[{stopId:'59',departure:{delay:120}}]});assert.equal(predictions([train],u,'59',now)[0].mode,'scheduled');});
+test('no prediction is invented for omitted stop or service date',()=>{assert.equal(predictions([train],feed({stopTimeUpdate:[{stopId:'other',stopSequence:9,departure:{delay:120}}]}),'59',now)[0].mode,'scheduled');assert.equal(predictions([train],feed({trip:{tripId:'ME1',startDate:'20261021'}}),'59',now)[0].mode,'scheduled');});
+test('no-data stop does not inherit delay; explicit zero delay is live',()=>{assert.equal(predictions([train],feed({stopTimeUpdate:[{stopId:'59',scheduleRelationship:2,departure:{delay:120}}]}),'59',now)[0].mode,'scheduled');assert.equal(predictions([train],feed({stopTimeUpdate:[{stopId:'59',departure:{delay:0}}]}),'59',now)[0].mode,'live');});
+test('departed trains removed, delayed trains kept and sorted',()=>{const past={...train,depart:now/1000-60};assert.equal(predictions([past],null,'59',now).length,0);assert.equal(predictions([past],feed({stopTimeUpdate:[{stopId:'59',departure:{delay:120}}]}),'59',now).length,1);});
+test('Chicago DST service origins',()=>{assert.equal(serviceOrigin(new Date('2026-03-08')),Date.parse('2026-03-08T05:00:00Z'));assert.equal(serviceOrigin(new Date('2026-11-01')),Date.parse('2026-11-01T06:00:00Z'));});
+test('calendar exceptions and quoted CSV',()=>{const rows=[];csv('id,name\n1,"a,b"\n',r=>rows.push(r));assert.equal(rows[0].name,'a,b');assert.ok(activeServices({calendars:[],exceptions:[{service_id:'extra',date:'20261022',exception_type:'1'}]},new Date('2026-10-22')).has('extra'));});
