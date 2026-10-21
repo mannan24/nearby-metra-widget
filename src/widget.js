@@ -73,7 +73,7 @@ async function main() {
     Location.setAccuracyToHundredMeters();
     try {
       const p=await Location.current();
-      if(!Number.isFinite(p.latitude)||!Number.isFinite(p.longitude)||p.horizontalAccuracy<0||p.horizontalAccuracy>1000)throw Error('Imprecise location');
+      if(!Number.isFinite(p.latitude)||!Number.isFinite(p.longitude)||p.horizontalAccuracy<0||p.horizontalAccuracy>250)throw Error('Imprecise location');
       // Some Scriptable versions expose a location timestamp; reject old fixes when available.
       const stamp=Number(p.timestamp);const locationTime=stamp>1e12?stamp:stamp*1000;
       if(Number.isFinite(locationTime)&&now-locationTime>300000)throw Error('Old location');
@@ -98,7 +98,7 @@ async function main() {
       text(col,label,small?8:10,true,muted);
       const list=trains.filter(t=>t.direction===direction),first=list[0];
       if(direction==='to'&&station.id==='MILLENNIUM'){text(col,'You are here',14,true);continue;}
-      text(col,first?when(first.when):'No train listed',small?17:23,true);
+      text(col,first?when(first.when)+(small?' '+(first.mode==='live'?'live':'sched.'):''):'No train listed',small?15:23,true);
       if(!small) {
         text(col,first?(first.mode==='live'?'Live prediction':'Scheduled'):'Check Metra service',10,false,muted);
         if(first&&walk.seconds!==null) {
